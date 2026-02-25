@@ -79,6 +79,8 @@ document-search/
 ├── requirements.txt
 └── README.md
 
+```
+
 ---
 
 ## Installation
