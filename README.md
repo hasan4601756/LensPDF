@@ -34,6 +34,53 @@ flowchart LR
 
 ---
 
+## Project Structure
+
+```bash
+document-search/
+│
+├── app/
+│   ├── main.py
+│   ├── config.py
+│   │
+│   ├── api/
+│   │   ├── documents.py
+│   │   ├── search.py
+│   │   └── deps.py
+│   │
+│   ├── core/
+│   │   ├── embeddings.py
+│   │   ├── reranker.py
+│   │   ├── opensearch_client.py
+│   │   └── logging.py
+│   │
+│   ├── ingestion/
+│   │   ├── extractor.py
+│   │   ├── preprocessing.py
+│   │   ├── chunking.py
+│   │   └── pipeline.py
+│   │
+│   ├── schemas/
+│   │   ├── document.py
+│   │   └── search.py
+│   │
+│   ├── services/
+│   │   ├── document_service.py
+│   │   └── search_service.py
+│   │
+│   └── utils/
+│       └── helpers.py
+│
+├── tests/
+├── scripts/
+├── docker/
+├── .env
+├── docker-compose.yaml
+├── requirements.txt
+└── README.md
+
+---
+
 ## Installation
 
 1. Clone the repository:
