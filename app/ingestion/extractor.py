@@ -11,7 +11,11 @@ import cv2
 import re
 from spellchecker import SpellChecker
 
-def has_large_image(page):
+reader = easyocr.Reader(['ur'], gpu=False)
+spell = SpellChecker()
+
+
+def has_large_image(page) -> bool:
     if "/Resources" not in page:
         return False
 
@@ -26,37 +30,32 @@ def has_large_image(page):
             return True
     return False
 
-def has_fonts(page):
+def has_fonts(page) -> bool:
     if "/Resources" in page:
         resources = page["/Resources"]
         return "/Font" in resources
     return False
 
-def text_length(page):
+def text_length(page) -> int:
     text = page.extract_text()
     if not text:
         return 0
     return len(text.strip())
 
-def is_scanned(page, min_text_chars=50):
-    text = page.extract_text()
-    len_text = text_length(page)
+def is_scanned(page, min_text_chars=50) -> tuple[str, bool]:
+    text = page.extract_text() or ""
     has_img = has_large_image(page)
-    has_font = has_fonts(page)
 
-    if len_text < min_text_chars and has_img and not has_font:
-        return True
-    return False
+    return text, (len(text) < min_text_chars and has_img)
 
-def is_valid_english_ocr(text, min_word_count=10, max_error_ratio=0.5):
-    spell = SpellChecker()
+def is_valid_english_ocr(text, min_word_count=10, max_error_ratio=0.5) -> bool:
     words = re.findall(r"[A-Za-z]{3,}", text.lower())
     if len(words) < min_word_count:
         return False
     misspelled = spell.unknown(words)
     return len(misspelled)/len(words) <= max_error_ratio
 
-def is_urdu_text(text):
+def is_urdu_text(text) -> bool:
     # try:
     #     if len(text) < 10:
     #         return False
@@ -74,15 +73,18 @@ def preprocess_image_eng(pil_image):
     # Denoise
     gray = cv2.medianBlur(gray, 3)
 
-    # # Binarize
-    # _, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    # kernel = np.ones((2, 2), np.uint8)
+    # gray = cv2.morphologyEx(gray, cv2.MORPH_OPEN, kernel)
 
-    thresh = cv2.adaptiveThreshold(
-    gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
-    )
+    # Binarize
+    _, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+    # thresh = cv2.adaptiveThreshold(
+    # gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
+    # )
     return thresh
     
-def extract_text_from_scanned_page(page):
+def extract_text_from_scanned_page(page) -> str:
     processed_image = preprocess_image_eng(page)
 
     text = pytesseract.image_to_string(
@@ -105,7 +107,7 @@ def preprocess_image_ur(image):
 
     return gray
 
-def extract_text_from_scanned_urdu_page(page, reader):
+def extract_text_from_scanned_urdu_page(page, reader) -> str:
     processed = preprocess_image_ur(page)
 
     results = reader.readtext(
@@ -121,17 +123,18 @@ def extract_text_from_scanned_urdu_page(page, reader):
     return extracted_text
 
 
-def read_from_pdf(pdf_path, reader):
+def read_from_pdf(pdf_path, reader) -> str:
     try:
         filename = os.path.basename(pdf_path)
         pdf_reader = PdfReader(pdf_path)
-
+        images = convert_from_path(pdf_path, dpi=300)
         pages = []
 
         for i, page in enumerate(pdf_reader.pages):
-            if is_scanned(page):
+            text, scanned = is_scanned(page)
+            if scanned:
                 try:
-                    image = convert_from_path(pdf_path, first_page=i+1, last_page=i+1, dpi=300)[0]
+                    image = images[i]
                     if not image:
                         print(f"Failed to convert page {i+1} into image.")
                     text = extract_text_from_scanned_page(image)
@@ -151,8 +154,7 @@ def read_from_pdf(pdf_path, reader):
                     print(f"Error converting page {i+1} to image: {e}")
                     pages.append("")  # Append an empty string to keep processing other pages.
             else:
-                page_content = page.extract_text()
-                pages.append(page_content)
+                pages.append(text)
 
         full_text = "\n".join(pages)
         meta = pdf_reader.metadata
@@ -170,6 +172,7 @@ def read_from_pdf(pdf_path, reader):
 
     except PdfReadError as e:
         print("Error reading file.")
+        return None
     except FileNotFoundError:
         print("File not found.")
         return None
@@ -178,13 +181,13 @@ def read_from_pdf(pdf_path, reader):
         return None
 
 
-def extract_text(pdf_path):
+def extract_text(pdf_path) -> str|None:
     pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
-    reader = easyocr.Reader(['ur'], gpu=False)
     try:
         # return read_simple_pdf(pdf_path)
         # return extract_text_from_scanned_pdf(pdf_path)
         # return extract_text_from_scanned_urdu_pdf(pdf_path, reader)
         return read_from_pdf(pdf_path, reader)
     except PdfReadError:
+        return None
         print("Invalid PDF file")
