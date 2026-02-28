@@ -122,41 +122,104 @@ def extract_text_from_scanned_urdu_page(page, reader) -> str:
 
     return extracted_text
 
+import os
+from typing import Dict, List, Any
+from pypdf import PdfReader
+from pypdf.errors import PdfReadError
+from pdf2image import convert_from_path, exceptions
 
-def read_from_pdf(pdf_path, reader) -> str:
+
+def read_from_pdf(pdf_path: str, reader) -> Dict[str, Any] | None:
+    """
+    Extracts text from a PDF and returns structured per-page output.
+
+    Returns:
+        {
+            "pages": [
+                {
+                    "page_number": int,
+                    "text": str,
+                    "source_type": "digital" | "ocr" | "urdu_ocr"
+                },
+                ...
+            ],
+            "metadata": {...}
+        }
+    """
+
     try:
         filename = os.path.basename(pdf_path)
         pdf_reader = PdfReader(pdf_path)
-        images = convert_from_path(pdf_path, dpi=300)
-        pages = []
+
+        structured_pages: List[Dict[str, Any]] = []
 
         for i, page in enumerate(pdf_reader.pages):
-            text, scanned = is_scanned(page)
-            if scanned:
+            page_number = i + 1
+
+            try:
+                text, scanned = is_scanned(page)
+
+                # DIGITAL PAGE
+                if not scanned:
+                    structured_pages.append({
+                        "page_number": page_number,
+                        "text": text or "",
+                        "source_type": "digital"
+                    })
+                    continue
+
+                # SCANNED PAGE → Convert only this page
                 try:
-                    image = images[i]
-                    if not image:
-                        print(f"Failed to convert page {i+1} into image.")
-                    text = extract_text_from_scanned_page(image)
+                    images = convert_from_path(
+                        pdf_path,
+                        dpi=300,
+                        first_page=page_number,
+                        last_page=page_number
+                    )
 
-                    if is_urdu_text(text):
-                        text = extract_text_from_scanned_urdu_page(image, reader)
+                    if not images:
+                        structured_pages.append({
+                            "page_number": page_number,
+                            "text": "",
+                            "source_type": "ocr"
+                        })
+                        continue
 
-                    pages.append(text)
+                    image = images[0]
+                    ocr_text = extract_text_from_scanned_page(image)
+
+                    # Detect Urdu
+                    if is_urdu_text(ocr_text):
+                        urdu_text = extract_text_from_scanned_urdu_page(image, reader)
+                        structured_pages.append({
+                            "page_number": page_number,
+                            "text": urdu_text or "",
+                            "source_type": "urdu_ocr"
+                        })
+                    else:
+                        structured_pages.append({
+                            "page_number": page_number,
+                            "text": ocr_text or "",
+                            "source_type": "ocr"
+                        })
 
                 except exceptions.PDFInfoNotInstalledError:
-                    print(f"Poppler is not installed or not working. Please install Poppler.")
-                    break
-                except exceptions.PDFPageCountError as e:
-                    print(f"Error: PDF has no pages or incorrect page count. {e}")
-                    break
-                except Exception as e:
-                    print(f"Error converting page {i+1} to image: {e}")
-                    pages.append("")  # Append an empty string to keep processing other pages.
-            else:
-                pages.append(text)
+                    print("Poppler is not installed or not working.")
+                    return None
 
-        full_text = "\n".join(pages)
+                except exceptions.PDFPageCountError as e:
+                    print(f"Invalid page count: {e}")
+                    return None
+
+            except Exception as page_error:
+                print(f"Error processing page {page_number}: {page_error}")
+                structured_pages.append({
+                    "page_number": page_number,
+                    "text": "",
+                    "source_type": "unknown"
+                })
+
+        # Extract metadata
         meta = pdf_reader.metadata
         metadata = {
             "title": getattr(meta, "title", None),
@@ -166,18 +229,20 @@ def read_from_pdf(pdf_path, reader) -> str:
         }
 
         return {
-        "text": full_text,
-        "metadata": metadata
-    }
+            "pages": structured_pages,
+            "metadata": metadata
+        }
 
-    except PdfReadError as e:
-        print("Error reading file.")
+    except PdfReadError:
+        print("Error reading PDF.")
         return None
+
     except FileNotFoundError:
         print("File not found.")
         return None
+
     except Exception as e:
-        print(f"Error reading PDF: {e}")
+        print(f"Unexpected error reading PDF: {e}")
         return None
 
 
@@ -189,5 +254,5 @@ def extract_text(pdf_path) -> str|None:
         # return extract_text_from_scanned_urdu_pdf(pdf_path, reader)
         return read_from_pdf(pdf_path, reader)
     except PdfReadError:
-        return None
         print("Invalid PDF file")
+        return None
