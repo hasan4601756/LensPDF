@@ -30,6 +30,8 @@ class AdaptiveNoiseCleaner:
         }
 
     def remove_adaptive_noise(self, text: str) -> str:
+        if not self.doc_count:
+            raise RuntimeError("Call fit() before remove_adaptive_noise()")
         lines = text.split('\n')
         cleaned_lines = [
             line for line in lines
@@ -180,9 +182,10 @@ def preprocess_page(page: dict) -> str:
     text = page["text"]
     source = page["source_type"]
 
-    text = preprocess_digital_text(text)
+    if source == "digital":
+        text = preprocess_digital_text(text)
 
-    if source == "ocr":
+    elif source == "ocr":
         text = preprocess_ocr_text(text)
 
     elif source == "urdu_ocr":

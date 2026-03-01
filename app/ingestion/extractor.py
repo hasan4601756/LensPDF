@@ -11,8 +11,17 @@ import cv2
 import re
 from spellchecker import SpellChecker
 
-reader = easyocr.Reader(['ur'], gpu=False)
+# reader = easyocr.Reader(['ur'], gpu=False)
 spell = SpellChecker()
+
+_urdu_reader = None
+
+def get_urdu_reader():
+    global _urdu_reader
+    if _urdu_reader is None:
+        print("Initializing EasyOCR Urdu reader...")
+        _urdu_reader = easyocr.Reader(['ur'], gpu=False)
+    return _urdu_reader
 
 
 def has_large_image(page) -> bool:
@@ -129,7 +138,7 @@ from pypdf.errors import PdfReadError
 from pdf2image import convert_from_path, exceptions
 
 
-def read_from_pdf(pdf_path: str, reader) -> Dict[str, Any] | None:
+def read_from_pdf(pdf_path: str) -> Dict[str, Any] | None:
     """
     Extracts text from a PDF and returns structured per-page output.
 
@@ -190,6 +199,7 @@ def read_from_pdf(pdf_path: str, reader) -> Dict[str, Any] | None:
 
                     # Detect Urdu
                     if is_urdu_text(ocr_text):
+                        reader = get_urdu_reader()
                         urdu_text = extract_text_from_scanned_urdu_page(image, reader)
                         structured_pages.append({
                             "page_number": page_number,
@@ -246,13 +256,13 @@ def read_from_pdf(pdf_path: str, reader) -> Dict[str, Any] | None:
         return None
 
 
-def extract_text(pdf_path) -> str|None:
+def extract_text(pdf_path) -> dict|None:
     pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
     try:
         # return read_simple_pdf(pdf_path)
         # return extract_text_from_scanned_pdf(pdf_path)
         # return extract_text_from_scanned_urdu_pdf(pdf_path, reader)
-        return read_from_pdf(pdf_path, reader)
+        return read_from_pdf(pdf_path)
     except PdfReadError:
         print("Invalid PDF file")
         return None
