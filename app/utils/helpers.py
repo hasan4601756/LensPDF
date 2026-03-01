@@ -1,9 +1,12 @@
 """
+utils/helpers.py
 Utilities for saving, loading, and inspecting embedding arrays.
 """
 
 import os
 import numpy as np
+
+
 def save_embeddings(embeddings: np.ndarray, path: str) -> None:
     """
     Save an embeddings array to a .npy file.
@@ -48,7 +51,6 @@ def save_embeddings_with_metadata(
 ) -> None:
     """
     Save embeddings array and their associated metadata separately.
-    Metadata is stored as a .npy file of object dtype (list of dicts).
 
     Args:
         embeddings:      2D numpy array of shape (N, dim).
@@ -62,7 +64,6 @@ def save_embeddings_with_metadata(
         )
 
     save_embeddings(embeddings, embeddings_path)
-
     os.makedirs(os.path.dirname(os.path.abspath(metadata_path)), exist_ok=True)
     np.save(metadata_path, np.array(metadata, dtype=object))
     print(f"Saved  → {metadata_path}  |  {len(metadata)} metadata entries")
@@ -85,7 +86,6 @@ def load_embeddings_with_metadata(
 
     metadata = np.load(metadata_path, allow_pickle=True).tolist()
     print(f"Loaded ← {metadata_path}  |  {len(metadata)} metadata entries")
-
     return embeddings, metadata
 
 
