@@ -1,9 +1,10 @@
 """
+core/vector_utils.py
 Cosine similarity and top-k semantic search utilities.
+Works with 768-dim embeddings from intfloat/multilingual-e5-base.
 """
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
 
 
 def cosine_similarity(
@@ -17,8 +18,8 @@ def cosine_similarity(
     Args:
         a:                  1D numpy array (embedding vector).
         b:                  1D numpy array (embedding vector).
-        already_normalized: If True (default), uses a fast dot product.
-                            Set to False if embeddings were not L2-normalized.
+        already_normalized: If True (default), uses fast dot product.
+                            Set False if embeddings were not L2-normalized.
 
     Returns:
         Float in range [-1, 1]. Higher = more similar.
@@ -44,11 +45,10 @@ def top_k_similar(
     Find the top-k most similar embeddings to a query embedding.
 
     Args:
-        query_embedding:   1D numpy array of shape (dim,).
-        corpus_embeddings: 2D numpy array of shape (N, dim).
-        k:                 Number of top results to return.
-        already_normalized: If True, uses dot product (fast). 
-                            Set to False for un-normalized embeddings.
+        query_embedding:    1D numpy array of shape (dim,).
+        corpus_embeddings:  2D numpy array of shape (N, dim).
+        k:                  Number of top results to return.
+        already_normalized: If True, uses dot product (fast).
 
     Returns:
         List of dicts sorted by score descending:
@@ -87,8 +87,8 @@ def batch_cosine_similarity(
     Compute cosine similarity between every query and every corpus embedding.
 
     Args:
-        query_embeddings:  2D array of shape (Q, dim).
-        corpus_embeddings: 2D array of shape (N, dim).
+        query_embeddings:   2D array of shape (Q, dim).
+        corpus_embeddings:  2D array of shape (N, dim).
         already_normalized: If True, uses matrix multiplication directly.
 
     Returns:
