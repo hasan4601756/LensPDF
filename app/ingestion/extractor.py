@@ -10,6 +10,7 @@ import numpy as np
 import cv2
 import re
 from spellchecker import SpellChecker
+from typing import Dict, List, Any
 
 # reader = easyocr.Reader(['ur'], gpu=False)
 spell = SpellChecker()
@@ -130,13 +131,6 @@ def extract_text_from_scanned_urdu_page(page, reader) -> str:
         extracted_text += text_content + "\n"
 
     return extracted_text
-
-import os
-from typing import Dict, List, Any
-from pypdf import PdfReader
-from pypdf.errors import PdfReadError
-from pdf2image import convert_from_path, exceptions
-
 
 def read_from_pdf(pdf_path: str) -> Dict[str, Any] | None:
     """
