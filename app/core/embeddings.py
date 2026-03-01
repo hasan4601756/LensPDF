@@ -1,5 +1,8 @@
 """
-Embedding model loading and vector generation.
+core/embeddings.py
+Embedding model loading and vector generation using intfloat/multilingual-e5-base.
+Supports 100 languages including Urdu, Arabic, English etc.
+IMPORTANT: This model requires 'query: ' prefix for queries and 'passage: ' prefix for passages.
 """
 
 from sentence_transformers import SentenceTransformer
@@ -7,17 +10,16 @@ import numpy as np
 import torch
 import time
 
-
-DEFAULT_MODEL = "all-MiniLM-L6-v2"
+DEFAULT_MODEL = "intfloat/multilingual-e5-base"
 
 
 class EmbeddingPipeline:
     """
-    Loads a local sentence-transformers model and generates embeddings.
+    Loads intfloat/multilingual-e5-base locally and generates 768-dim embeddings.
     No external API calls are made.
 
     Args:
-        model_name:    Hugging Face model identifier.
+        model_name:    Model identifier (default: intfloat/multilingual-e5-base).
         batch_size:    Number of chunks per forward pass.
         device:        'cpu', 'cuda', or None (auto-detect).
         normalize:     L2-normalize embeddings (recommended for cosine similarity).
@@ -27,14 +29,14 @@ class EmbeddingPipeline:
     def __init__(
         self,
         model_name: str = DEFAULT_MODEL,
-        batch_size: int = 64,
+        batch_size: int = 32,
         device: str | None = None,
         normalize: bool = True,
         show_progress: bool = True,
     ):
-        self.model_name = model_name
-        self.batch_size = batch_size
-        self.normalize = normalize
+        self.model_name    = model_name
+        self.batch_size    = batch_size
+        self.normalize     = normalize
         self.show_progress = show_progress
 
         if device is None:
@@ -47,33 +49,42 @@ class EmbeddingPipeline:
         self.embedding_dim = self.model.get_sentence_embedding_dimension()
         print(f"Model loaded. Embedding dimension: {self.embedding_dim}")
 
-    def embed_single(self, text: str) -> np.ndarray:
+    def _add_prefix(self, texts: list[str], is_query: bool) -> list[str]:
+        """Add required e5 prefix: 'query: ' for queries, 'passage: ' for documents."""
+        prefix = "query: " if is_query else "passage: "
+        return [prefix + t for t in texts]
+
+    def embed_single(self, text: str, is_query: bool = False) -> np.ndarray:
         """
         Embed a single string.
 
+        Args:
+            text:     Input text.
+            is_query: True for search queries, False for document passages.
+
         Returns:
-            1D numpy array of shape (embedding_dim,).
+            1D numpy array of shape (768,).
         """
         if not text or not text.strip():
             raise ValueError("Cannot embed empty text.")
-
+        prefixed = self._add_prefix([text], is_query)[0]
         return self.model.encode(
-            text,
+            prefixed,
             normalize_embeddings=self.normalize,
             convert_to_numpy=True,
         )
 
-    def embed_batch(self, chunks: list[str]) -> np.ndarray:
+    def embed_batch(self, chunks: list[str], is_query: bool = False) -> np.ndarray:
         """
         Embed a list of text chunks in batches.
-        Empty/whitespace chunks are skipped with a warning and replaced
-        with zero vectors in the output to preserve index alignment.
+        Empty chunks are skipped and replaced with zero vectors to preserve index alignment.
 
         Args:
-            chunks: List of text strings.
+            chunks:   List of text strings.
+            is_query: True for search queries, False for document passages (default).
 
         Returns:
-            2D numpy array of shape (len(chunks), embedding_dim).
+            2D numpy array of shape (len(chunks), 768).
         """
         if not chunks:
             raise ValueError("chunks list is empty.")
@@ -87,9 +98,11 @@ class EmbeddingPipeline:
         if not valid_chunks:
             raise ValueError("All chunks are empty.")
 
+        prefixed = self._add_prefix(valid_chunks, is_query)
+
         start = time.time()
         embeddings = self.model.encode(
-            valid_chunks,
+            prefixed,
             batch_size=self.batch_size,
             normalize_embeddings=self.normalize,
             convert_to_numpy=True,
@@ -109,9 +122,9 @@ class EmbeddingPipeline:
 
     def embed_documents(self, documents: list[dict]) -> list[dict]:
         """
-        Embed a list of chunk dicts produced by a text chunker.
-        Each dict must contain a 'text' key.
-        An 'embedding' key (np.ndarray) is added to each dict in-place.
+        Embed a list of chunk dicts (output of a text chunker).
+        Each dict must have a 'text' key.
+        Adds an 'embedding' key (np.ndarray) to each dict in-place.
 
         Args:
             documents: e.g. [{"text": "...", "metadata": {...}}, ...]
@@ -123,7 +136,7 @@ class EmbeddingPipeline:
             raise ValueError("documents list is empty.")
 
         texts      = [doc.get("text", "") for doc in documents]
-        embeddings = self.embed_batch(texts)
+        embeddings = self.embed_batch(texts, is_query=False)
 
         for doc, emb in zip(documents, embeddings):
             doc["embedding"] = emb
