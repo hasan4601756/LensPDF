@@ -1,23 +1,26 @@
-version: '3'
 services:
-  opensearch:
-    image: opensearchproject/opensearch:latest
-    container_name: opensearch
+  opensearch-node:
+    image: opensearchproject/opensearch:2.11.0
     environment:
+      - cluster.name=opensearch-cluster
+      - node.name=opensearch-node
       - discovery.type=single-node
-      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=StrongPassword123!
-      - plugins.security.disabled=true
       - bootstrap.memory_lock=true
-      - "OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g"
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+      - DISABLE_SECURITY_PLUGIN=true # Simplifies local dev
     ulimits:
       memlock:
         soft: -1
         hard: -1
-    volumes:
-      - opensearch-data:/usr/share/opensearch/data
     ports:
       - 9200:9200
-      - 9600:9600
 
-volumes:
-  opensearch-data:
+  api:
+    build: .
+    ports:
+      - 8000:8000
+    environment:
+      - OPENSEARCH_HOST=opensearch-node
+    depends_on:
+      - opensearch-node
