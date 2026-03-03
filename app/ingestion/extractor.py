@@ -207,6 +207,9 @@ def read_from_pdf(pdf_path: str) -> Dict[str, Any] | None:
                             "source_type": "ocr"
                         })
 
+                    del image
+                    del images
+
                 except exceptions.PDFInfoNotInstalledError:
                     print("Poppler is not installed or not working.")
                     return None

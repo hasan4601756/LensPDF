@@ -6,6 +6,14 @@ from transformers import AutoTokenizer
 nlp = None
 tokenizer = None
 
+# nlp = spacy.load("en_core_web_sm")
+# tokenizer = AutoTokenizer.from_pretrained("intfloat/multilingual-e5-base")
+
+MODEL_LIMIT = 512
+PREFIX = "passage: "
+OVERLAP_TOKENS = 50
+
+
 def get_nlp():
     global nlp
     if nlp is None:
@@ -24,14 +32,6 @@ def get_safe_limit():
     tokenizer = get_tokenizer()
     prefix_tokens = len(tokenizer.encode(PREFIX, add_special_tokens=False))
     return MODEL_LIMIT - prefix_tokens - 5
-
-# nlp = spacy.load("en_core_web_sm")
-# tokenizer = AutoTokenizer.from_pretrained("intfloat/multilingual-e5-base")
-
-MODEL_LIMIT = 512
-PREFIX = "passage: "
-OVERLAP_TOKENS = 50
-
 
 def split_urdu_sentences(text: str):
     sentences = re.split(r'[۔?!]\s+', text)
