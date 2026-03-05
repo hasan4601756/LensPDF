@@ -140,3 +140,6 @@ class EmbeddingPipeline:
         return (f"EmbeddingPipeline(model='{self.model_name}', "
                 f"dim={self.embedding_dim}, device={self.device}, "
                 f"batch_size={self.batch_size})")
+    
+
+embedding_pipeline = EmbeddingPipeline()
