@@ -128,7 +128,7 @@ class EmbeddingPipeline:
         if not documents:
             raise ValueError("documents list is empty.")
 
-        texts      = [doc.get("text", "") for doc in documents]
+        texts      = [doc.get("content", "") for doc in documents]
         embeddings = self.embed_batch(texts, is_query=False)
 
         for doc, emb in zip(documents, embeddings):

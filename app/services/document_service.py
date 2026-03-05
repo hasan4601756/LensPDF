@@ -11,7 +11,7 @@ def document_service(file_path : str):
 
     embedded_chunks = embedding_pipeline.embed_documents(all_chunks)
 
-    
+    client.create_index()
     response = client.bulk_index(embedded_chunks)
     
     return response

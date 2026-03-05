@@ -31,7 +31,7 @@ def run_ingestion_pipeline(filepath: str) -> list:
 
         for i, chunk in enumerate(chunks):
             all_chunks.append({
-                "text": chunk,
+                "content": chunk,
                 "metadata": {
                     **file_metadata, 
                     "page_number": page_number,

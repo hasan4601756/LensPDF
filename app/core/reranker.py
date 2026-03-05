@@ -7,7 +7,7 @@ class ReRanker:
 
     def rerank(self, query: str, documents: list):
         if not documents: return []
-        pairs = [[query, doc['text']] for doc in documents]
+        pairs = [[query, doc['content']] for doc in documents]
         scores = self.model.predict(pairs)
         for i, score in enumerate(scores):
             documents[i]['rerank_score'] = float(score)
