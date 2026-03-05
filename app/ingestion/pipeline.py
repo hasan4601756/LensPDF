@@ -1,14 +1,23 @@
 import time
+import hashlib
 
-def run_ingestion_pipeline(filepath: str):
+def calculate_binary_hash(file_path: str) -> str:
+    sha256_hash = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        for byte_block in iter(lambda: f.read(65536), b""):
+            sha256_hash.update(byte_block)
+    return sha256_hash.hexdigest()
+
+def run_ingestion_pipeline(filepath: str) -> list:
     from .extractor import extract_text
     result = extract_text(filepath)
     file_metadata = result['metadata']
+    file_hash = calculate_binary_hash(file_path=filepath)
 
     # time.sleep(15)
 
     if not result or not result.get("pages"):
-        return [], result.get("metadata") if result else {}
+        return []
 
     all_chunks = []
 
@@ -20,13 +29,15 @@ def run_ingestion_pipeline(filepath: str):
         from .chunking import chunk_text
         chunks = chunk_text(cleaned_text)
 
-        for chunk in chunks:
+        for i, chunk in enumerate(chunks):
             all_chunks.append({
                 "text": chunk,
                 "metadata": {
                     **file_metadata, 
-                    "page_number": page_number
+                    "page_number": page_number,
+                    "chunk_id" : i,
+                    "file_hash": file_hash
                 }
             })
 
-    return all_chunks, result.get("metadata", {})
+    return all_chunks
