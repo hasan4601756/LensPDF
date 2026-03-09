@@ -20,7 +20,7 @@ class SearchService:
         }
         
         response = self.client.search(index=settings.INDEX_NAME, body=search_body)
-        results = []
+        results =[]
         for hit in response['hits']['hits']:
             results.append({
                 "text": hit['_source']['text'],

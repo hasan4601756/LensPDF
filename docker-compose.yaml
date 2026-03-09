@@ -6,9 +6,9 @@ services:
       - node.name=opensearch-node
       - discovery.type=single-node
       - bootstrap.memory_lock=true
-      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+      - "OPENSEARCH_JAVA_OPTS=-Xms256m -Xmx512m" # Forcing it to stay small
       - DISABLE_INSTALL_DEMO_CONFIG=true
-      - DISABLE_SECURITY_PLUGIN=true # Simplifies local dev
+      - DISABLE_SECURITY_PLUGIN=true
     ulimits:
       memlock:
         soft: -1
@@ -24,3 +24,5 @@ services:
       - OPENSEARCH_HOST=opensearch-node
     depends_on:
       - opensearch-node
+    volumes:
+      - ./tests:/app/tests

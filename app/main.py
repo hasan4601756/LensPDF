@@ -1,34 +1,64 @@
-from fastapi import FastAPI, UploadFile, File, BackgroundTasks
-from app.ingestion.pipeline import process_document
-from app.services.search_service import search_service
-from app.core.opensearch_client import get_opensearch_client, create_index_if_not_exists
-import shutil
 import os
+import glob
+import asyncio
+import gc
+from fastapi import FastAPI, HTTPException
+from app.ingestion.pipeline import run_ingestion_pipeline
+from app.core.opensearch_client import get_opensearch_client, create_index_if_not_exists
+from app.services.search_service import search_service
 
-app = FastAPI(title="Document Search API")
+app = FastAPI(title="LensPDF Search API")
 
 @app.on_event("startup")
-def startup_db_client():
+async def startup_event():
+    # 1. Wait for System to Settle
+    print("--- [MODERATION] Waiting 15s for Database to settle... ---")
+    await asyncio.sleep(15)
+    
     client = get_opensearch_client()
     create_index_if_not_exists(client)
-
-@app.post("/api/documents")
-async def upload_document(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
-    temp_path = f"temp_{file.filename}"
-    with open(temp_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
     
-    # Process in background
-    background_tasks.add_task(handle_ingestion, temp_path, file.filename)
-    return {"message": "Processing started", "filename": file.filename}
+    test_folder = "/app/tests"
+    if not os.path.exists(test_folder):
+        print(f"CRITICAL ERROR: Folder {test_folder} not found in container.")
+        return
 
-async def handle_ingestion(path: str, filename: str):
-    processed_chunks = await process_document(path, filename)
-    client = get_opensearch_client()
-    for chunk in processed_chunks:
-        client.index(index="documents_index", body=chunk)
-    os.remove(path)
+    pdf_files = glob.glob(os.path.join(test_folder, "*.pdf"))
+    print(f"--- [AUTO-INGEST] Processing {len(pdf_files)} files one by one ---")
+    
+    for pdf_path in pdf_files:
+        fname = os.path.basename(pdf_path)
+        try:
+            print(f"\n>>> Processing: {fname}")
+            data = await run_ingestion_pipeline(pdf_path, fname)
+            
+            if data:
+                for item in data:
+                    client.index(index="documents_index", body=item)
+                print(f"[OK] Indexed {fname}")
+            else:
+                print(f"[-] Skipping {fname}: No text could be extracted.")
+            
+            # 2. Exhaustive Cleanup
+            del data
+            gc.collect()
+            print("--- [COOLDOWN] Resting 5 seconds... ---")
+            await asyncio.sleep(5)
+
+        except Exception as e:
+            print(f"[FAIL] {fname}: {str(e)}")
+            continue
+
+    print("\n--- ALL STARTUP TASKS DONE ---")
+    print("API is now ready for search queries at http://localhost:8000/docs")
 
 @app.get("/api/search")
 async def search(query: str, limit: int = 5):
-    return await search_service.search(query, limit)
+    try:
+        return await search_service.search(query, limit)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+
+@app.get("/health")
+def health_check():
+    return {"status": "healthy"}
