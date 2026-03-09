@@ -168,7 +168,7 @@ class OpenSearchClient:
 
         search_body = {
             "size": top_k,
-            "_source": {"excludes": ["embedding"]},
+            "_source": {"excludes": ["embedding", "file_hash", "chunk_id"]},
             "query": {
                 "hybrid": {
                     "queries": [
