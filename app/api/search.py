@@ -1,7 +1,15 @@
 from app.services.search_service import search_service
+from app.core.embeddings import EmbeddingPipeline
+from app.core.opensearch_client import OpenSearchClient
+from app.core.reranker import ReRanker
 
-def search_api(query:str, limit:int):
-    result = search_service(query, limit*10)
+def search_api(query: str,
+    limit: int,
+    embedding_pipeline: EmbeddingPipeline,
+    client: OpenSearchClient,
+    reranker: ReRanker,):
+
+    result = search_service(query, limit*10, embedding_pipeline, client, reranker)
 
     doc_scores = {}
 
