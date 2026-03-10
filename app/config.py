@@ -7,8 +7,8 @@ class Settings(BaseSettings):
     OPENSEARCH_USER: str = "admin"
     OPENSEARCH_PASS: str = "admin"
     INDEX_NAME: str = "documents_index"
-    EMBEDDING_MODEL: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-    RERANK_MODEL: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    EMBEDDING_MODEL: str = "intfloat/multilingual-e5-base"
+    RERANK_MODEL: str = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
 
     class Config:
         env_file = ".env"

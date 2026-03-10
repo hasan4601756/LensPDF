@@ -7,12 +7,27 @@ from app.ingestion.pipeline import run_ingestion_pipeline
 from app.core.opensearch_client import get_opensearch_client, create_index_if_not_exists
 from app.services.search_service import search_service
 
-app = FastAPI(title="LensPDF Search API")
+app = FastAPI(title="LensPDF Search")
+
+def is_file_indexed(client, filename: str, index_name: str) -> bool:
+    """Checks the Database to see if this file is already embedded."""
+    try:
+        query = {
+            "query": {
+                "match_phrase": {
+                    "metadata.filename": filename
+                }
+            }
+        }
+        response = client.search(index=index_name, body=query, size=1)
+        # If we find at least 1 chunk belonging to this file, it's already indexed
+        return response['hits']['total']['value'] > 0
+    except Exception:
+        return False
 
 @app.on_event("startup")
 async def startup_event():
-    # 1. Wait for System to Settle
-    print("--- [MODERATION] Waiting 15s for Database to settle... ---")
+    print("---[MODERATION] Waiting 15s for Database to settle... ---")
     await asyncio.sleep(15)
     
     client = get_opensearch_client()
@@ -24,10 +39,16 @@ async def startup_event():
         return
 
     pdf_files = glob.glob(os.path.join(test_folder, "*.pdf"))
-    print(f"--- [AUTO-INGEST] Processing {len(pdf_files)} files one by one ---")
+    print(f"--- [AUTO-INGEST] Scanning {len(pdf_files)} files ---")
     
     for pdf_path in pdf_files:
         fname = os.path.basename(pdf_path)
+        
+        # --- THE FIX: ASK THE DATABASE BEFORE PROCESSING ---
+        if is_file_indexed(client, fname, "documents_index"):
+            print(f"[SKIPPED] {fname} is already embedded in the database.")
+            continue
+            
         try:
             print(f"\n>>> Processing: {fname}")
             data = await run_ingestion_pipeline(pdf_path, fname)
@@ -36,17 +57,15 @@ async def startup_event():
                 for item in data:
                     client.index(index="documents_index", body=item)
                 print(f"[OK] Indexed {fname}")
-            else:
-                print(f"[-] Skipping {fname}: No text could be extracted.")
             
-            # 2. Exhaustive Cleanup
+            # Extreme Cleanup
             del data
             gc.collect()
-            print("--- [COOLDOWN] Resting 5 seconds... ---")
+            print("---[COOLDOWN] Resting 5 seconds... ---")
             await asyncio.sleep(5)
 
         except Exception as e:
-            print(f"[FAIL] {fname}: {str(e)}")
+            print(f"[FAIL] {fname}: {e}")
             continue
 
     print("\n--- ALL STARTUP TASKS DONE ---")
@@ -55,7 +74,8 @@ async def startup_event():
 @app.get("/api/search")
 async def search(query: str, limit: int = 5):
     try:
-        return await search_service.search(query, limit)
+        results = await search_service.search(query, limit)
+        return results
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 

@@ -33,7 +33,8 @@ RUN pip install https://github.com/explosion/spacy-models/releases/download/en_c
 
 # 6. BAKE MULTILINGUAL MODELS (One-time download)
 RUN python -c "import easyocr; easyocr.Reader(['ur', 'en'], gpu=False)"
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')"
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('intfloat/multilingual-e5-base')"
+RUN python -c "from sentence_transformers import CrossEncoder; CrossEncoder('cross-encoder/mmarco-mMiniLMv2-L12-H384-v1')"
 
 COPY . .
 
