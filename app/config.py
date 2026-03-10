@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     OPENSEARCH_PASSWORD: str | None = "StrongPassword123!"
     OPENSEARCH_USE_SSL: bool = False
     OPENSEARCH_INDEX: str = "default_index"
+    OPENSEARCH_VERIFY_CERTS : bool = False
 
     RERANK_MODEL: str = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
 

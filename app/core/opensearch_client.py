@@ -16,22 +16,28 @@ class OpenSearchClient:
                 settings.OPENSEARCH_PASSWORD,
             ) if settings.OPENSEARCH_USERNAME else None,
             use_ssl=settings.OPENSEARCH_USE_SSL,
-            verify_certs=False,
+            verify_certs=settings.OPENSEARCH_VERIFY_CERTS,
         )
         self.index_name = settings.OPENSEARCH_INDEX
 
-    # ---------------------------------------------------------
-    # INDEX MANAGEMENT
-    # ---------------------------------------------------------
+        if not self.ping():
+            raise ConnectionError(f"Could not connect to OpenSearch at {settings.OPENSEARCH_HOST}")
+
 
     def create_index(self, vector_dimension: int = 768):
-        """
-        Creates index with vector mapping and metadata properties for hybrid search.
-        """
+        if not isinstance(vector_dimension, int) or vector_dimension <= 0:
+            return {"success": False, "message": "Invalid vector_dimension, must be a positive integer."}
+        
+        try:
+            if not self.client.ping():
+                return {"success": False, "message": "Elasticsearch client not reachable."}
+        except Exception as e:
+            return {"success": False, "message": f"Error pinging Elasticsearch: {e}"}
+        
         if self.client.indices.exists(index=self.index_name):
             logger.info(f"Index '{self.index_name}' already exists.")
 
-            return {"success": False, "massage": "The index already exists."}
+            return {"success": True, "message": "The index already exists."}
 
         index_body = {
             "settings": {
@@ -43,17 +49,16 @@ class OpenSearchClient:
             "mappings": {
                 "properties": {
                     "document_id": {"type": "keyword"},
-                    "chunk_id": {"type": "keyword"},
                     "content": {
                         "type": "text",
-                        "analyzer": "standard" # BM25 uses this for text search
+                        "analyzer": "standard"
                     },
                     "embedding": {
                         "type": "knn_vector",
                         "dimension": vector_dimension,
                         "method": {
                             "name": "hnsw",
-                            "space_type": "l2", # or "cosinesimilary"
+                            "space_type": "l2", # or "cosinesimilarity"
                             "engine": "lucene",
                             "parameters": {
                                 "ef_construction": 128,
@@ -79,86 +84,83 @@ class OpenSearchClient:
 
         try:
             result = self.client.indices.create(index=self.index_name, body=index_body)
+            logger.info(f"Creating index '{self.index_name}' with vector dimension {vector_dimension}.")
+            pipeline_result =  self.__create_search_pipeline()
+
+            if (pipeline_result.get('result') == False):
+                return {"success": False, "message": "Pipeline Creation Failed!"}
+            logger.info(f"Index '{self.index_name}' and Search Pipeline created successfully.")
         except Exception as e:
-            return e
-        
-        self._create_search_pipeline()
-        
-        logger.info(f"Index '{self.index_name}' and Search Pipeline created successfully.")
+            logger.error(f"Failed to create index '{self.index_name}': {e}")
+            return {"success": False, "message": str(e)}
 
-        return result
+        return {"success": True, "message": f"Index '{self.index_name}' created successfully.", "data": result}
 
-    def _create_search_pipeline(self):
-        """
-        Creates a search pipeline to normalize and combine scores for Hybrid Search.
-        """
-        pipeline_name = "hybrid-search-pipeline"
-        pipeline_body = {
-            "description": "Post-processor for hybrid search scoring",
-            "phase_results_processors": [
-                {
-                    "normalization-processor": {
-                        "normalization": {"technique": "min_max"},
-                        "combination": {
-                            "technique": "arithmetic_mean",
-                            "parameters": {"weights": [0.3, 0.7]} # 0.3 Keyword, 0.7 Semantic
-                        }
-                    }
-                }
-            ]
-        }
 
-        try:
-            self.client.transport.perform_request(
-                "PUT", f"/_search/pipeline/{pipeline_name}", body=pipeline_body
-            )
-        except Exception as e:
-            print(f"Error with search pipeline, Error: {e}")
+    def bulk_index(self, documents: List[Dict[str, Any]], file_metadata):
+        filename = file_metadata.get("filename")
+        file_hash = file_metadata.get("file_hash")
 
-    # ---------------------------------------------------------
-    # BULK INSERT
-    # ---------------------------------------------------------
-
-    def bulk_index(self, documents: List[Dict[str, Any]]):
         if not documents:
-            return
+            return {"success": False, "chunks_indexed": 0, "message": "No document Passed (None)"}
+        
+        try:
+            if self.file_already_indexed(file_hash):
+                logger.info(f"Document '{filename}' with hash {file_hash} is already indexed. Skipping.")
+                return {"success": False, "chunks_indexed": 0, "message": "File Already Indexed!"}
 
-        # Extract info from the first document's metadata to check for existence
-        # Based on your previous structure: doc["metadata"]["filename"]
-        meta = documents[0].get("metadata", {})
-        filename = meta.get("filename")
-        file_hash = meta.get("file_hash")
+            if self.filename_already_indexed(filename):
+                logger.info(f"Document with filename:'{filename}' is already indexed")
+                return {"success": False, "chunks_indexed": 0, "message": "File with this name is  already Indexed!"}
+                # self.delete_by_file_name(filename)
 
-        # 1. Exact Binary Match -> Stop
-        if self.file_already_indexed(file_hash):
-            logger.info(f"Document '{filename}' with hash {file_hash} is already indexed. Skipping.")
-            return
+            actions = []
 
-        # 2. Filename Match but different hash -> It's an update, delete old version
-        if self.filename_already_indexed(filename):
-            logger.info(f"Document '{filename}' has changed. Removing old version before re-indexing.")
-            return
-            # self.remove_old_version(filename)
+            for doc in documents:
+                # Safely get metadata fields to avoid KeyErrors
+                meta = doc.get("metadata", {})
+                page_num = meta.get("page_number", "0")
+                chunk_id = meta.get("chunk_id", "0")
+                
+                custom_id = f"{filename}_{page_num}_{chunk_id}"
 
-        # 3. Proceed with indexing
-        actions = []
-        for doc in documents:
-            # We use a unique ID combining filename and chunk to prevent collisions
-            # Format: filename_page_chunk
-            custom_id = f"{filename}_{doc['metadata'].get('page_number')}_{doc['metadata'].get('chunk_id')}"
+                actions.append({
+                    "_index": self.index_name,
+                    "_id": custom_id, 
+                    "_source": {
+                        "content": doc.get("content"),
+                        "embedding": doc.get("embedding"),
+                        "document_id": file_hash,
+                        "metadata": {**file_metadata, **meta}
+                    },
+                })
+                
+            success_count, errors = helpers.bulk(self.client, actions)
+
+            if errors:
+                logger.error(f"Bulk indexing partially failed for {filename} therefore removing all of them. Errors: {len(errors)}")
+                delete_result = self.delete_by_file_name(file_metadata.get('filename', ''))
+
+                if delete_result['success'] == False:
+                    for action in actions:
+                        doc_id = action['_id']
+                        self.client.delete(index='myindex', id=doc_id, ignore=[404])
+
+
+                return {
+                    "success": False, 
+                    "chunks_indexed": success_count, 
+                    "filename": filename, 
+                    "message": str(errors[0])
+                }
             
-            actions.append({
-                "_index": self.index_name,
-                "_id": custom_id, 
-                "_source": doc,
-            })
+            logger.info(f"Successfully indexed {success_count} chunks for '{filename}'.")
+            return {"success": True, "chunks_indexed": success_count, "filename": filename, "message": None}
 
-        helpers.bulk(self.client, actions)
-        logger.info(f"Successfully indexed {len(documents)} chunks for '{filename}'.")
+        except Exception as e:
+            logger.exception(f"Unexpected error indexing document {filename}: {str(e)}")
+            return {"success": "False", "chunks_indexed": 0, "filename": filename, "message": str(e)}
 
-    # ---------------------------------------------------------
-    # VECTOR SEARCH
-    # ---------------------------------------------------------
 
     def hybrid_search(self, query_text: str, query_vector: List[float], top_k: int = 5, metadata_filters: Dict[str, Any] = None):
         must_filters = []
@@ -168,7 +170,7 @@ class OpenSearchClient:
 
         search_body = {
             "size": top_k,
-            "_source": {"excludes": ["embedding", "file_hash", "chunk_id"]},
+            "_source": {"excludes": ["embedding", "metadata.file_hash", "metadata.chunk_id"]},
             "query": {
                 "hybrid": {
                     "queries": [
@@ -192,37 +194,80 @@ class OpenSearchClient:
             }
         }
 
-        # Add filters if they exist
         if must_filters:
             search_body["query"]["hybrid"]["filter"] = {"bool": {"must": must_filters}}
 
-        # Use the pipeline we created in create_index
         params = {"search_pipeline": "hybrid-search-pipeline"}
 
-        response = self.client.search(
-            index=self.index_name,
-            body=search_body,
-            params=params
-        )
+        try:
+            response = self.client.search(
+                index=self.index_name,
+                body=search_body,
+                params=params
+            )
 
-        return [
-        {
-            # Use .get() to avoid KeyError if the field is missing
-            "content": hit["_source"].get("content", ""), 
-            "metadata": hit["_source"].get("metadata", {}),
-            "score": hit["_score"]
-        }
-        for hit in response["hits"]["hits"]
-    ]
+            return {
+                "success": True,
+                "search_result": [
+                    {
+                        "content": hit["_source"].get("content", ""), 
+                        "metadata": hit["_source"].get("metadata", {}),
+                        "score": hit["_score"]
+                    }
+                    for hit in response["hits"]["hits"]
+                ]}
+        except Exception as e:
+            logger.error('Search Failed for query: {query_text} with Error {str(e)}')
+            return {'success': False, "message": "Query search Failed!"}
     
-    # ---------------------------------------------------------
-    # DELETE DOCUMENT
-    # ---------------------------------------------------------
+    def ping(self) -> bool:
+        try:
+            return self.client.ping()
+        except Exception as e:
+            raise e
+        
 
+
+
+
+    """   Internal Functions   """
+        
+    def __create_search_pipeline(self, pipeline_name = "hybrid-search-pipeline",
+        pipeline_body = {
+            "description": "Post-processor for hybrid search scoring",
+            "phase_results_processors": [
+                {
+                    "normalization-processor": {
+                        "normalization": {"technique": "min_max"},
+                        "combination": {
+                            "technique": "arithmetic_mean",
+                            "parameters": {"weights": [0.3, 0.7]}
+                        }
+                    }
+                }
+            ]
+        }
+        ):
+
+        try:
+            existing = self.client.transport.perform_request("GET", f"/_search/pipeline/{pipeline_name}")
+            if existing.get(pipeline_name):
+                logger.info(f"Pipeline '{pipeline_name}' already exists. Skipping creation.")
+                return {"success": True, "message": f"Pipeline '{pipeline_name}' already exists."}
+        except Exception:
+            pass
+
+        try:
+            self.client.transport.perform_request(
+                "PUT", f"/_search/pipeline/{pipeline_name}", body=pipeline_body
+            )
+            logger.info(f"Pipeline '{pipeline_name}' created/updated successfully.")
+            return {"success": True, "message": f"Pipeline '{pipeline_name}' created successfully."}
+        except Exception as e:
+            logger.error(f"Failed to create/update pipeline '{pipeline_name}': {e}")
+            return {"success": False, "message": str(e)}
+        
     def delete_by_file_name(self, filename: str):
-        """
-        Delete all chunks belonging to a document.
-        """
 
         query = {
             "query": {
@@ -239,30 +284,13 @@ class OpenSearchClient:
             )
 
             logger.info(f"Deleted document '{filename}' from index.")
+            return {"success": True, "message": "Deletion Successfull"}
         except Exception as e:
             logger.error(f"Error cleaning up old version: {e}")
-
-
-    def remove_old_version(self, filename: str):
-        
-        query = {
-            "query": {
-                "term": {
-                    "metadata.filename": filename
-                }
-            }
-        }
-        try:
-            self.client.delete_by_query(index=self.index_name, body=query)
-            logger.info(f"Cleaned up previous version of {filename}")
-        except Exception as e:
-            logger.error(f"Error cleaning up old version: {e}")
+            return {"success": False, "message": str(e)}
 
 
     def file_already_indexed(self, file_hash: str) -> bool:
-        """
-        Queries OpenSearch to see if any chunk contains this file hash.
-        """
         query = {
             "query": {
                 "term": {
@@ -270,7 +298,7 @@ class OpenSearchClient:
                 }
             },
             "_source": False, 
-            "size": 1 # We only need to know if at least one exists
+            "size": 1
         }
         response = self.client.search(index=self.index_name, body=query)
         return response['hits']['total']['value'] > 0
@@ -288,14 +316,14 @@ class OpenSearchClient:
         response = self.client.search(index=self.index_name, body=query)
         return response['hits']['total']['value'] > 0
 
-    # ---------------------------------------------------------
-    # HEALTH CHECK
-    # ---------------------------------------------------------
-
-    def ping(self) -> bool:
-        """
-        Check if OpenSearch is reachable.
-        """
-        return self.client.ping()
     
-client = OpenSearchClient()
+
+"""   Lazy Loading for the client   """
+client = None
+
+def get_client():
+    global client
+
+    if client is None:
+        client = OpenSearchClient()
+    return client

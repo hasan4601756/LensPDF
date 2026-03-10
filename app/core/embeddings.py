@@ -142,4 +142,12 @@ class EmbeddingPipeline:
                 f"batch_size={self.batch_size})")
     
 
-embedding_pipeline = EmbeddingPipeline()
+embedding_pipeline = None
+
+def get_embedding_pipeline():
+    global embedding_pipeline
+
+    if embedding_pipeline == None:
+        embedding_pipeline = EmbeddingPipeline()
+
+    return embedding_pipeline

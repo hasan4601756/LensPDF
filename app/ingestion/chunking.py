@@ -12,6 +12,7 @@ tokenizer = None
 MODEL_LIMIT = 512
 PREFIX = "passage: "
 OVERLAP_TOKENS = 50
+MIN_CHUNK_TOKENS = 75
 
 
 def get_nlp():
@@ -135,4 +136,12 @@ def chunk_text(text: str):
     if current_tokens:
         chunks.append(tokenizer.decode(current_tokens))
 
-    return chunks
+    filtered_chunks = []
+    for tokens in chunks:
+        chunk_length = len(tokenizer.encode(tokens))
+        if chunk_length >= MIN_CHUNK_TOKENS:
+            filtered_chunks.append(tokens)
+
+    return filtered_chunks
+
+    # return chunks

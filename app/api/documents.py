@@ -7,4 +7,7 @@ def document_api(file_path:str):
         return {"Succeeded": False, "Error": "Error uploading file."}
     result = document_service(file_path)
 
+    if result == None:
+        return {"Succeeded": False, "message": "Document service failed!"} 
+
     return {"Succeeded": True, "response": result}
