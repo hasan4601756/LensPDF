@@ -2,12 +2,9 @@ from app.services.document_service import document_service
 import os
 
 def document_api(file_path:str):
-    if os.path.exists(file_path):
+    if not os.path.exists(file_path):
         print("Error in Document Api: file does not exist at generated path")
-        return {"Succeeded": False, "Error": "Error uploading file."}
+        return {"success": False, "message": "Error uploading file."}
     result = document_service(file_path)
 
-    if result == None:
-        return {"Succeeded": False, "message": "Document service failed!"} 
-
-    return {"Succeeded": True, "response": result}
+    return result

@@ -210,6 +210,7 @@ class OpenSearchClient:
                 "success": True,
                 "search_result": [
                     {
+                        "document_id": hit["_source"].get("document_id", ""),
                         "content": hit["_source"].get("content", ""), 
                         "metadata": hit["_source"].get("metadata", {}),
                         "score": hit["_score"]

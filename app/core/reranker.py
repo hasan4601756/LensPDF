@@ -24,7 +24,11 @@ class ReRanker:
                 doc['rerank_score'] = float(score)
         except Exception as e:
             raise RuntimeError("Reranking inference failed") from e
-        return sorted(documents, key=lambda x: x.get('rerank_score'), reverse=True)
+        return sorted(
+            documents,
+            key=lambda x: (x.get('rerank_score', 0), x.get('score', 0)),
+            reverse=True
+        )
     
     def get_reranker(self):
         try:

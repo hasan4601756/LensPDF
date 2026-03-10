@@ -1,15 +1,10 @@
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks
-from app.services.search_service import search_service
-from app.services.document_service import document_service
+from app.api.search import search_api
+from app.api.documents import document_api
 import shutil, uuid
 import os
 
 app = FastAPI()
-
-@app.get('/')
-def main():
-    return "Hello"
-
 
 job_store = {}
 
@@ -17,13 +12,13 @@ job_store = {}
 async def upload_document(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     job_id = str(uuid.uuid4())
     
-    temp_path = f"temp_{job_id}_{file.filename}"
+    temp_path = f"{file.filename}"
     with open(temp_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
     job_store[job_id] = {"status": "queued", "filename": file.filename}
 
-    background_tasks.add_task(document_service_wrapper, job_id, temp_path)
+    background_tasks.add_task(document_api_wrapper, job_id, temp_path)
 
     return {
         "message": "Processing started",
@@ -31,11 +26,11 @@ async def upload_document(background_tasks: BackgroundTasks, file: UploadFile = 
     }
 
 
-async def document_service_wrapper(job_id: str, path: str):
+async def document_api_wrapper(job_id: str, path: str):
     try:
         job_store[job_id]["status"] = "processing"
 
-        result = document_service(path)
+        result = document_api(path)
 
         if (result['success'] == False):
             raise RuntimeError(result['message'])
@@ -60,4 +55,4 @@ async def get_status(job_id: str):
 
 @app.get("/api/search")
 async def search(query: str, limit: int = 5):
-    return search_service(query, limit)
+    return search_api(query, limit)
