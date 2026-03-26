@@ -1,7 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
-    OPENSEARCH_HOST: str = "https://localhost:9200"
+    OPENSEARCH_HOST: str = "http://localhost:9200"
     OPENSEARCH_USERNAME: str | None = "admin"
     OPENSEARCH_PASSWORD: str | None = "StrongPassword123!"
     OPENSEARCH_USE_SSL: bool = False

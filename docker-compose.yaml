@@ -1,23 +1,66 @@
-version: '3'
 services:
+
+  # ─────────────────────────────────────────────
+  # OpenSearch — vector search engine
+  # ─────────────────────────────────────────────
   opensearch:
-    image: opensearchproject/opensearch:latest
+    image: opensearchproject/opensearch:2.13.0
     container_name: opensearch
     environment:
-      - discovery.type=single-node
+      - discovery.type=single-node          # Single-node dev cluster
       - OPENSEARCH_INITIAL_ADMIN_PASSWORD=StrongPassword123!
-      - plugins.security.disabled=true
-      - bootstrap.memory_lock=true
-      - "OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g"
+      - plugins.security.disabled=true      # Disables SSL + auth (matches OPENSEARCH_USE_SSL=False)
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
     ulimits:
       memlock:
         soft: -1
         hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
     volumes:
-      - opensearch-data:/usr/share/opensearch/data
+      - opensearch_data:/usr/share/opensearch/data
     ports:
-      - 9200:9200
-      - 9600:9600
+      - "9200:9200"
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ─────────────────────────────────────────────
+  # FastAPI app
+  # ─────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: document-search-api
+    environment:
+      - OPENSEARCH_HOST=http://opensearch:9200  # Points to the service above, not localhost
+      - OPENSEARCH_USERNAME=
+      - OPENSEARCH_PASSWORD=
+      - OPENSEARCH_USE_SSL=False
+      - OPENSEARCH_VERIFY_CERTS=False
+      - OPENSEARCH_INDEX=documents
+    ports:
+      - "8000:8000"
+    networks:
+      - app_network
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    volumes:
+      - ./uploads:/app/uploads   # Persist uploaded files during processing
+
 
 volumes:
-  opensearch-data:
+  opensearch_data:
+    driver: local
+
+networks:
+  app_network:
+    driver: bridge
