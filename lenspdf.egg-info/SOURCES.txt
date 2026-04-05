@@ -1,0 +1,9 @@
+pyproject.toml
+app/__init__.py
+app/ingestion/extractor.py
+lenspdf.egg-info/PKG-INFO
+lenspdf.egg-info/SOURCES.txt
+lenspdf.egg-info/dependency_links.txt
+lenspdf.egg-info/top_level.txt
+tests/__init__.py
+tests/ingestion/text_extractor.py

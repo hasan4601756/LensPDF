@@ -117,6 +117,15 @@ pip install -r requirements.txt
 ```bash
 uvicorn app.main:app --reload
 ```
+### Running the Docker Container
+```bash
+docker compose up --build
+```
+
+### Running the Docker Container (Without build)
+```bash
+docker compose up
+```
 
 ### API Endpoints
 
